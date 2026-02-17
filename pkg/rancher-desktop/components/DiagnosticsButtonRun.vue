@@ -54,10 +54,10 @@ export default defineComponent({
       @click="onClick"
     >
       <span class="icon icon-refresh icon-diagnostics" />
-      Rerun
+      {{ t('generic.rerun') }}
     </button>
     <div class="diagnostics-status-history">
-      Last run: <span
+      {{ t('diagnostics.lastRun') }} <span
         class="elapsed-timespan"
         :title="timeLastRunTooltip"
       >{{ friendlyTimeLastRun }}</span>

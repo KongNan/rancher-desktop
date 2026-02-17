@@ -49,6 +49,7 @@ import WSL_EXEC from '@pkg/assets/scripts/wsl-exec';
 import WSL_INIT_SCRIPT from '@pkg/assets/scripts/wsl-init';
 import { ContainerEngine } from '@pkg/config/settings';
 import { getServerCredentialsPath, ServerState } from '@pkg/main/credentialServer/httpCredentialHelperServer';
+import { t } from '@pkg/main/i18n';
 import mainEvents from '@pkg/main/mainEvents';
 import BackgroundProcess from '@pkg/utils/backgroundProcess';
 import * as childProcess from '@pkg/utils/childProcess';
@@ -320,7 +321,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
    */
   protected async ensureDistroRegistered(): Promise<void> {
     if (!await this.isDistroRegistered()) {
-      await this.progressTracker.action('Registering WSL distribution', 100, async() => {
+      await this.progressTracker.action(t('progress.registeringWslDistribution'), 100, async() => {
         await fs.promises.mkdir(paths.wslDistro, { recursive: true });
         try {
           await this.execWSL({ capture: true },
@@ -350,7 +351,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
 
     try {
       if (!await this.isDistroRegistered({ distribution: DATA_INSTANCE_NAME })) {
-        await this.progressTracker.action('Initializing WSL data', 100, async() => {
+        await this.progressTracker.action(t('progress.initializingWslData'), 100, async() => {
           try {
             // Create a distro archive from the main distro.
             // WSL seems to require a working /bin/sh for initialization.
@@ -414,7 +415,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
         console.log('data distro already registered');
       }
 
-      await this.progressTracker.action('Updating WSL data', 100, async() => {
+      await this.progressTracker.action(t('progress.updatingWslData'), 100, async() => {
         // We may have extra directories (due to upgrades); copy any new ones over.
         const missingDirs: string[] = [];
 
@@ -469,7 +470,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
     const virtualNetworkStaticAddr = '192.168.127.254';
     const virtualNetworkGatewayAddr = '192.168.127.1';
 
-    await this.progressTracker.action('Updating /etc/hosts', 50, async() => {
+    await this.progressTracker.action(t('progress.updatingEtcHosts'), 50, async() => {
       const contents = await fs.promises.readFile(`\\\\wsl$\\${ DATA_INSTANCE_NAME }\\etc\\hosts`, 'utf-8');
       const lines = contents.split(/\r?\n/g)
         .filter(line => !line.includes('host.docker.internal'));
@@ -1030,7 +1031,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
     }
     if (semver.lt(existingVersion, desiredVersion, true)) {
       // Make sure we copy the data over before we delete the old distro
-      await this.progressTracker.action('Upgrading WSL distribution', 100, async() => {
+      await this.progressTracker.action(t('progress.upgradingWslDistribution'), 100, async() => {
         await this.initDataDistribution();
         await this.execWSL('--unregister', INSTANCE_NAME);
         await this.ensureDistroRegistered();
@@ -1227,7 +1228,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
     await this.setState(State.STARTING);
     this.currentAction = Action.STARTING;
     this.#containerEngineClient = undefined;
-    await this.progressTracker.action('Initializing Rancher Desktop', 10, async() => {
+    await this.progressTracker.action(t('progress.initializingRancherDesktop'), 10, async() => {
       try {
         const prepActions = [(async() => {
           await this.ensureDistroRegistered();
@@ -1244,7 +1245,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
         // Clear the diagnostic about not having Kubernetes versions
         mainEvents.emit('diagnostics-event', { id: 'kube-versions-available', available: true });
 
-        await this.progressTracker.action('Preparing to start', 0, Promise.all(prepActions));
+        await this.progressTracker.action(t('progress.preparingToStart'), 0, Promise.all(prepActions));
         if (config.kubernetes.enabled && kubernetesVersion === undefined) {
           if (isDowngrade) {
             // The desired version was unavailable, and the user declined a downgrade.
@@ -1263,7 +1264,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
         }
 
         // If we were previously running, stop it now.
-        await this.progressTracker.action('Stopping existing instance', 100, async() => {
+        await this.progressTracker.action(t('progress.stoppingExistingInstance'), 100, async() => {
           try {
             await this.execCommand({ expectFailure: true }, 'rm', '-f', '/var/log/rc.log');
           } catch {}
@@ -1271,11 +1272,11 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
           await this.killStaleProcesses();
         });
 
-        const distroLock = await this.progressTracker.action('Mounting WSL data', 100, this.mountData());
+        const distroLock = await this.progressTracker.action(t('progress.mountingWslData'), 100, this.mountData());
 
         try {
-          await this.progressTracker.action('Installing container engine', 0, Promise.all([
-            this.progressTracker.action('Starting WSL environment', 100, async() => {
+          await this.progressTracker.action(t('progress.installingContainerEngine'), 0, Promise.all([
+            this.progressTracker.action(t('progress.startingWslEnvironment'), 100, async() => {
               const rdNetworkingDNS = 'gateway.rancher-desktop.internal';
               const logPath = await this.wslify(paths.logs);
               const rotateConf = LOGROTATE_K3S_SCRIPT.replace(/\r/g, '')
@@ -1284,11 +1285,11 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
               const mobyStorageDriver = this.cfg?.containerEngine?.mobyStorageDriver ?? 'auto';
 
               await Promise.all([
-                this.progressTracker.action('Installing the docker-credential helper', 10, async() => {
+                this.progressTracker.action(t('progress.installingDockerCredentialHelper'), 10, async() => {
                   // This must run after /etc/rancher is mounted
                   await this.installCredentialHelper();
                 }),
-                this.progressTracker.action('DNS configuration', 50, () => {
+                this.progressTracker.action(t('progress.dnsConfiguration'), 50, () => {
                   return new Promise<void>((resolve) => {
                     console.debug(`setting DNS server to ${ rdNetworkingDNS } for rancher desktop networking`);
                     try {
@@ -1299,14 +1300,14 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
                     resolve();
                   });
                 }),
-                this.progressTracker.action('Kubernetes dockerd compatibility', 50, async() => {
+                this.progressTracker.action(t('progress.kubernetesDockerCompatibility'), 50, async() => {
                   await this.writeFile('/etc/init.d/cri-dockerd', SERVICE_SCRIPT_CRI_DOCKERD, 0o755);
                   await this.writeConf('cri-dockerd', {
                     ENGINE:  config.containerEngine.name,
                     LOG_DIR: logPath,
                   });
                 }),
-                this.progressTracker.action('Kubernetes components', 50, async() => {
+                this.progressTracker.action(t('progress.kubernetesComponents'), 50, async() => {
                   await this.writeFile('/etc/init.d/k3s', SERVICE_SCRIPT_K3S, 0o755);
                   await this.writeFile('/etc/logrotate.d/k3s', rotateConf);
                   await this.execCommand('mkdir', '-p', '/etc/cni/net.d');
@@ -1314,7 +1315,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
                     await this.writeFile('/etc/cni/net.d/10-flannel.conflist', FLANNEL_CONFLIST);
                   }
                 }),
-                this.progressTracker.action('container engine components', 50, async() => {
+                this.progressTracker.action(t('progress.containerEngineComponents'), 50, async() => {
                   await BackendHelper.configureContainerEngine(this, configureWASM, mobyStorageDriver);
                   await this.writeConf('containerd', { log_owner: 'root' });
                   await this.writeFile('/usr/local/bin/nerdctl', NERDCTL, 0o755);
@@ -1327,7 +1328,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
                   await this.writeFile(`/etc/conf.d/buildkitd`,
                     `${ SERVICE_BUILDKITD_CONF }\nlog_file=${ logPath }/buildkitd.log\n`);
                 }),
-                this.progressTracker.action('Proxy Config Setup', 50, async() => {
+                this.progressTracker.action(t('progress.proxyConfigSetup'), 50, async() => {
                   await this.execCommand('mkdir', '-p', '/etc/moproxy');
                   await this.writeConf('moproxy', {
                     MOPROXY_BINARY: await this.getMoproxyPath(),
@@ -1336,7 +1337,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
                   await this.writeFile('/etc/init.d/moproxy', SERVICE_SCRIPT_MOPROXY, 0o755);
                   await this.writeProxySettings(config.experimental.virtualMachine.proxy);
                 }),
-                this.progressTracker.action('Configuring image proxy', 50, async() => {
+                this.progressTracker.action(t('progress.configuringImageProxy'), 50, async() => {
                   const allowedImagesConf = '/usr/local/openresty/nginx/conf/allowed-images.conf';
                   const resolver = `resolver ${ rdNetworkingDNS } ipv6=off;\n`;
 
@@ -1356,7 +1357,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
 
                   await this.execCommand({ root: true }, 'rm', '-f', obsoleteImageAllowListConf);
                 }),
-                await this.progressTracker.action('Rancher Desktop guest agent', 50, this.installGuestAgent(kubernetesVersion, this.cfg)),
+                await this.progressTracker.action(t('progress.rancherDesktopGuestAgent'), 50, this.installGuestAgent(kubernetesVersion, this.cfg)),
                 // Remove any residual rc artifacts from previous version
                 await this.execCommand({ root: true }, 'rm', '-f', '/etc/init.d/vtunnel-peer', '/etc/runlevels/default/vtunnel-peer'),
                 await this.execCommand({ root: true }, 'rm', '-f', '/etc/init.d/host-resolver', '/etc/runlevels/default/host-resolver'),
@@ -1388,8 +1389,8 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
               // Do not await on this, as we don't want to wait until the proxy exits.
               this.runWslProxy().catch(console.error);
             }),
-            this.progressTracker.action('Installing CA certificates', 100, this.installCACerts()),
-            this.progressTracker.action('Installing helpers', 50, this.installWSLHelpers()),
+            this.progressTracker.action(t('progress.installingCaCertificates'), 100, this.installCACerts()),
+            this.progressTracker.action(t('progress.installingHelpers'), 50, this.installWSLHelpers()),
           ]));
 
           if (kubernetesVersion) {
@@ -1400,8 +1401,8 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
             // BackendHelper#installContainerdShims); and we need that to finish first so that when
             // we install Kubernetes, we can look up the set of shims in order to create
             // RuntimeClasses for them.  (See BackendHelper#configureRuntimeClasses.)
-            await this.progressTracker.action('Installing Kubernetes', 0, Promise.all([
-              this.progressTracker.action('Writing K3s configuration', 50, async() => {
+            await this.progressTracker.action(t('progress.installingKubernetes'), 0, Promise.all([
+              this.progressTracker.action(t('progress.writingK3sConfiguration'), 50, async() => {
                 const k3sConf = {
                   PORT:                   config.kubernetes.port.toString(),
                   LOG_DIR:                await this.wslify(paths.logs),
@@ -1433,7 +1434,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
 
                 await this.writeConf('k3s', k3sConf);
               }),
-              this.progressTracker.action('Installing k3s', 100, async() => {
+              this.progressTracker.action(t('progress.installingK3s'), 100, async() => {
                 await this.kubeBackend.deleteIncompatibleData(version);
                 await this.kubeBackend.install(config, version, false);
               })]));
@@ -1442,19 +1443,19 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
           distroLock.kill('SIGTERM');
         }
 
-        await this.progressTracker.action('Running provisioning scripts', 100, this.runProvisioningScripts());
+        await this.progressTracker.action(t('progress.runningProvisioningScripts'), 100, this.runProvisioningScripts());
 
         if (config.experimental.virtualMachine.proxy.enabled && config.experimental.virtualMachine.proxy.address && config.experimental.virtualMachine.proxy.port) {
-          await this.progressTracker.action('Starting proxy', 100, this.startService('moproxy'));
+          await this.progressTracker.action(t('progress.startingProxy'), 100, this.startService('moproxy'));
         }
         if (config.containerEngine.allowedImages.enabled) {
-          await this.progressTracker.action('Starting image proxy', 100, this.startService('rd-openresty'));
+          await this.progressTracker.action(t('progress.startingImageProxy'), 100, this.startService('rd-openresty'));
         }
-        await this.progressTracker.action('Starting container engine', 0, this.startService(config.containerEngine.name === ContainerEngine.MOBY ? 'docker' : 'containerd'));
+        await this.progressTracker.action(t('progress.startingContainerEngine'), 0, this.startService(config.containerEngine.name === ContainerEngine.MOBY ? 'docker' : 'containerd'));
 
         switch (config.containerEngine.name) {
         case ContainerEngine.CONTAINERD:
-          await this.progressTracker.action('Starting buildkit', 0,
+          await this.progressTracker.action(t('progress.startingBuildkit'), 0,
             this.startService('buildkitd'));
           try {
             await this.execCommand({
@@ -1479,11 +1480,11 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
         }
 
         const tasks = [
-          this.progressTracker.action('Waiting for container engine to be ready', 0, this.containerEngineClient.waitForReady()),
+          this.progressTracker.action(t('progress.waitingForContainerEngine'), 0, this.containerEngineClient.waitForReady()),
         ];
 
         if (kubernetesVersion) {
-          tasks.push(this.progressTracker.action('Starting Kubernetes', 100, this.kubeBackend.start(config, kubernetesVersion)));
+          tasks.push(this.progressTracker.action(t('progress.startingKubernetes'), 100, this.kubeBackend.start(config, kubernetesVersion)));
         }
 
         await Promise.all(tasks);
@@ -1608,7 +1609,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
       await this.kubeBackend.stop();
       this.#containerEngineClient = undefined;
 
-      await this.progressTracker.action('Shutting Down...', 10, async() => {
+      await this.progressTracker.action(t('progress.shuttingDown'), 10, async() => {
         if (await this.isDistroRegistered({ runningOnly: true })) {
           const services = ['k3s', 'docker', 'containerd', 'rd-openresty',
             'rancher-desktop-guestagent', 'buildkitd'];
@@ -1657,7 +1658,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
   }
 
   async del(): Promise<void> {
-    await this.progressTracker.action('Deleting Kubernetes', 20, async() => {
+    await this.progressTracker.action(t('progress.deletingKubernetes'), 20, async() => {
       await this.stop();
       if (await this.isDistroRegistered()) {
         await this.execWSL('--unregister', INSTANCE_NAME);
@@ -1670,7 +1671,7 @@ export default class WSLBackend extends events.EventEmitter implements VMBackend
   }
 
   async reset(config: BackendSettings): Promise<void> {
-    await this.progressTracker.action('Resetting Kubernetes state...', 5, async() => {
+    await this.progressTracker.action(t('progress.resettingKubernetes'), 5, async() => {
       await this.stop();
       // Mount the data first so they can be deleted correctly.
       const distroLock = await this.mountData();
