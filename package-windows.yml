@@ -1,0 +1,75 @@
+name: 🪟 Package Windows Release (Manual Trigger)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # === Node + Corepack + Yarn 4（已验证稳定）===
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Remove global Yarn 1.x + Enable Corepack + Yarn 4.9.4
+        shell: pwsh
+        run: |
+          npm uninstall -g yarn --force
+          corepack enable
+          corepack prepare yarn@4.9.4 --activate
+          yarn --version
+          node --version
+
+      # === Windows 构建工具 ===
+      - name: Install build dependencies (Chocolatey + VS Build Tools)
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          
+          choco install -y git go python --no-progress
+          choco install -y visualstudio2022buildtools `
+            --params "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+                      --add Microsoft.VisualStudio.Component.Windows11SDK.22621" `
+            --no-progress
+
+      - name: Configure Yarn + Git
+        shell: pwsh
+        run: |
+          yarn config set msvs_version 2022
+          yarn config set msbuild_path "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      # === 关键修复：拉取 tags + 构建 + 打包 ===
+      - name: Fetch tags (解决 git describe 警告)
+        run: git fetch --tags --force
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build the Electron app (生成 dist/app/background.js 等)
+        run: yarn build
+
+      - name: Package Windows (生成 MSI + ZIP + EXE)
+        run: yarn package
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rancher-desktop-windows-release
+          path: |
+            dist/Rancher.Desktop.Setup.*.msi
+            dist/Rancher.Desktop-*.win.zip
+            dist/*.exe
+          if-no-files-found: error
+          retention-days: 30
